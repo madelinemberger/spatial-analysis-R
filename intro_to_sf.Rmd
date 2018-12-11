@@ -64,16 +64,20 @@ Read in a shapefile of Alaska using `readOGR()` from the `rgdal` package, and `s
 
 ## Read in shapefile using rgdal
 
-system.time(ak_shp_rgdal <- readOGR(dsn="shapefiles", layer="ak_regions"))
-object.size(ak_shp_rgdal)
+system.time(ak_shp_rgdal <- readOGR(dsn="shapefiles", layer="ak_regions")) #dsn is the folder you wants, layer will pull anything with that beginning
+object.size(ak_shp_rgdal) #this tells you how bit something is, ie if its taking too long to load
 plot(ak_shp_rgdal)
 ```
 
+
+
 ```{r read_shp_sf}
 ## Read in shapefile using sf
-system.time(ak_shp_sf <- read_sf("shapefiles/ak_regions.shp")) 
+#this stores spatial data in a data frame format
+
+system.time(ak_shp_sf <- read_sf("shapefiles/ak_regions.shp")) #tells you how long it takes to read something in 
 object.size(ak_shp_sf)
-head(ak_shp_sf)  
+head(ak_shp_sf)
 ```
 
 
@@ -92,7 +96,12 @@ Every `sf` object needs a coordinate reference system (or `crs`) defined in orde
 You can view what `crs` is set by using the function `st_crs`
 
 ```{r}
-st_crs(ak_shp_sf)
+st_crs(ak_shp_sf) #this will tell you what CRS this is in
+
+#EPSG - code assigned to standard projection, uses latitude and longitude. how you reference your point to the Earth
+#can see that its using WGS84
+#projection is how you squash the datum to a horizontal plane
+#if you have two shapefiles, you want CRS to be the same 
 ```
 
 This is pretty confusing looking. Without getting into the details, that long string says that this data has a greographic coordinate system (WGS84) with no projection. A convenient way to reference `crs` quickly is by using the EPSG code, a number that represents a standard projection and datum. You can check out a list of (lots!) of EPSG codes [here](http://spatialreference.org/ref/epsg/?page=1). 
@@ -101,14 +110,19 @@ You will often need to transform your geospatial data from one coordinate system
 
 
 ```{r}
-ak_shp_sf <- ak_shp_sf %>%
-  st_transform(crs = 3338)
+#transform or reproject your spatial data inti a new CRS
 
-st_crs(ak_shp_sf)
+ak_shp_sf <- ak_shp_sf %>% #this is a way to overwrite what you read it 
+  st_transform(crs = 3338) # you just need the EPSG code here
+
+st_crs(ak_shp_sf) # can see that units are now in meters, which is easer to work with than degrees
+
+#these projects are equal area, instead of equal distance. you can never use both 
 ```
 
 ```{r}
-plot(ak_shp_sf)
+plot(ak_shp_sf) #plotting each of the columns differently (there were three columns), this is why it takes awhile. below we will learn how to plot just one feature from one column
+
 ```
 
 Much better!
@@ -121,8 +135,14 @@ ak_shp_sf
 ```
 
 ```{r}
-nrow(ak_shp_sf)
-ncol(ak_shp_sf)
+nrow(ak_shp_sf) #how many rows
+ncol(ak_shp_sf) #how many columns 
+
+#sticky geometries is what allows this, see Allison's art!
+#Sticky geometries
+
+
+
 ```
 
 ![](images/Allison_sf_art.png)
@@ -137,7 +157,10 @@ Since `sf` objects are dataframes, they play nicely with packages in the tidyver
 
 ```{r select}
 ak_shp_sf %>%
-  select(region)
+  select(mgmt_area)
+
+#can see "stickiness" here, you only selected one column but the geometry column will stay with you, since it is fundamental to your data frame
+#if your doing geospatial analysis you always want geometry anyway 
 ```
 
 Note the sticky geometry column! The geometry column will stay with your `sf` object even if it is not called explicitly.
@@ -165,6 +188,8 @@ First, read in the population data as a regular `data.frame`.
 
 ```{r}
 pop <- read.csv("shapefiles/alaska_population.csv")
+
+class(pop) #this is a dataframe, needs to be an sf object as well to join
 ```
 
 The `st_join` function is a spatial left join. The arguments for both the left and right tables are objects of class `sf` which means we will first need to turn our population `data.frame` with latitude and longitude coordinates into an `sf` object. 
@@ -173,11 +198,13 @@ We can do this easily using the `st_as_sf` function, which takes as arguments th
 
 ```{r}
 pop_sf <- st_as_sf(pop, 
-                  coords = c('lng', 'lat'),
-                  crs = 4326,
-                  remove = F)
+                  coords = c('lng', 'lat'), #need to give it coordinates, name of cols,x y
+                  crs = 4326, #need to assign a coordinate refernce system
+                  remove = F) #this overrides default, which would turn lat lon into geom, and get rid of those columns, we don't want to do this right now
 
 head(pop_sf)
+
+plot(pop_sf["population"]) #this will just plot ONE column 
 ```
 
 Now we can do our spatial join! You can specify what geometry function the join uses (`st_intersects`, `st_within`, `st_crosses`, `st_is_within_distance`, ...) in the `join` argument. The geometry function you use will depend on what kind of operation you want to do, and the geometries of your shapefiles.
@@ -185,7 +212,7 @@ Now we can do our spatial join! You can specify what geometry function the join 
 In this case, we want to find what region each city falls within, so we will use `st_within`.
 
 ```{r, eval = F}
-pop_joined_sf <- st_join(pop_sf, ak_shp_sf, join = st_within)
+pop_joined_sf <- st_join(pop_sf, ak_shp_sf, join = st_within) #join function tells you how to join, there are st_intersect, etc. we have points within polygons, so we want to use st_within 
 ```
 
 This gives an error! 
@@ -197,23 +224,28 @@ Error: st_crs(x) == st_crs(y) is not TRUE
 Turns out, this won't work right now because our coordinate reference systems are not the same. Luckily, this is easily resolved using `st_transform`, and projecting our population object into Alaska Albers.
 
 ```{r}
-pop_sf <- st_transform(pop_sf, crs = 3338)
+pop_sf <- st_transform(pop_sf, crs = 3338) #needs to match
+#need to accept data as it is, and then transform it (don't quite understand), have to say where they are on the earth, and then you can transform you can do it 
+
 ```
 
 ```{r}
 pop_joined_sf <- st_join(pop_sf, ak_shp_sf, join = st_within)
 
+#we put pop on left because we wanted a region for every city, default of join 
+#if you wanted all the cities in a region, would use a contain (so this really depends on what question you are asking)
+
 head(pop_joined_sf)
-plot(pop_joined_sf["region"])
+plot(pop_joined_sf["region"]) #can see that now, all your points have a region assigned to them 
 ```
 
 Next we compute the total population for each region. In this case, we want to do a `group_by` and `summarise` as this were a regular `data.frame` - otherwise all of our point geometries would be aggregated by region which is not what we want. We remove the sticky geometry using `as.data.frame`, on the advice of the `sf::tidyverse` help page.
 
 ```{r}
 pop_region <- pop_joined_sf %>% 
-  as.data.frame() %>% 
+  as.data.frame() %>% #this will drop sticky geometry 
   group_by(region) %>% 
-  summarise(total_pop = sum(population))
+  summarise(total_pop = sum(population)) #note spelling 
 
 head(pop_region)
 ```
@@ -221,7 +253,7 @@ head(pop_region)
 And use a regular `left_join` to get the information back to the Alaska region shapefile. Note that we need this step in order to retain our region geometries so that we can make some maps.
 
 ```{r}
-ak_pop_sf <- left_join(ak_shp_sf, pop_region)
+ak_pop_sf <- left_join(ak_shp_sf, pop_region) #there was a more elegant way of doing this 
 
 head(ak_pop_sf)
 
@@ -241,6 +273,8 @@ Let's try some out. Say we want to calculate the population by Alaska management
 ak_mgmt <- ak_pop_sf %>% 
   group_by(mgmt_area) %>% 
   summarize(total_pop = sum(total_pop))
+
+#what this did is that it unioned all the grouped geometries into one so now this object, instead of being 13 rows, is now 4. Can see this when you look at df, "multipolygon"
 
 plot(ak_mgmt["total_pop"])
 ```
@@ -262,7 +296,7 @@ plot(ak_mgmt["total_pop"])
 Save the spatial object to disk using `write_sf()` and specifying the filename. Writing your file with the extension .shp will assume an ESRI driver [driver](http://www.gdal.org/ogr_formats.html), but there are many other format options available.
 
 ```{r plot}
-write_sf(ak_pop_sf, "shapefiles/ak_regions_population.shp", delete_layer = TRUE)
+write_sf(ak_mgmt, "shapefiles/ak_mgmt.shp", delete_layer = TRUE)
 ```
 
 # Visualize with ggplot
@@ -271,15 +305,15 @@ write_sf(ak_pop_sf, "shapefiles/ak_regions_population.shp", delete_layer = TRUE)
 
 ```{r}
 #simplest plot
-ggplot(ak_pop_sf) +
-  geom_sf()
+ggplot(ak_pop_sf) +  #this lets you plot a spatial object in ggplot
+  geom_sf()   #this is the new geom 
 ```
 
 This is useful to make sure your file looks correct but doesn't display any information about the data. We can plot these regions and fill each polygon based on the population
 
 ```{r}
 ggplot(ak_pop_sf) +
-  geom_sf(aes(fill = total_pop))
+  geom_sf(aes(fill = total_pop)) #tell what column R should use to fill the polygons
 ```
 
 We can clean it up a bit, applying a cleaner theme and assigning a continuous color palette.
@@ -289,7 +323,7 @@ ggplot(ak_pop_sf) +
   geom_sf(aes(fill = total_pop)) +
   theme_bw() +
   labs(fill = "Total Population") +
-  scale_fill_continuous(low = "khaki", high =  "firebrick", labels = comma)
+  scale_fill_continuous(low = "khaki", high =  "firebrick", labels = comma) #Use this for other graphs!! super helpful, this is from scales package 
 ```
 
 We can also plot multiple shapefiles in the same plot. Say if we want to visualize rivers in Alaska, in addition to the location of communities, since many communities in Alaska are on rivers. We can read in a rivers shapefile, doublecheck the `crs` to make sure it is what we need, and then plot all three shapefiles.
@@ -300,11 +334,11 @@ st_crs(rivers)
 ```
 
 ```{r}
-ggplot() +
+ggplot() + #so you can plot all these shapefile on top of each other 
   geom_sf(data = ak_pop_sf, aes(fill = total_pop)) +
-  geom_sf(data = rivers, aes(size = StrOrder), color = "black") +
-  geom_sf(data = pop_sf, aes(), size = .5) +
-  scale_size(range = c(0.01, 0.2), guide = F) +
+  geom_sf(data = rivers, aes(size = StrOrder), color = "black") + #aes tells you what data you want to control size of the data point 
+  geom_sf(data = pop_sf, aes(), size = .5) + #0.5 tells you size of dots
+  scale_size(range = c(0.01, 0.2), guide = F) + #scale the default size of rivers data, play around until you get one that you like. guide = F turns off legend
   theme_bw() +
   labs(fill = "Total Population") +
   scale_fill_continuous(low = "khaki", high =  "firebrick", labels = comma)
